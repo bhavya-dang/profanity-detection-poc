@@ -1,32 +1,13 @@
 import { useEffect, useState } from "react";
 import toast, { Toaster } from "react-hot-toast";
-import getCompletion from "./utils/deepseek";
+import getCompletion from "./utils/gemini";
+import { cleanResponse } from "./utils/helpers";
 
 function App() {
-  const [image, setImage] = useState(null);
   const [comment, setComment] = useState("");
   const [comments, setComments] = useState([]);
 
-  useEffect(() => {
-    fetch("https://api.thecatapi.com/v1/images/search")
-      .then((response) => {
-        if (response.status === 429) {
-          console.warn(
-            "Rate limit reached. Please wait before making more requests."
-          );
-          return null;
-        }
-        return response.json();
-      })
-      .then((data) => {
-        if (data && data.length > 0) {
-          setImage(data[0]);
-        }
-      })
-      .catch((error) => console.error("Error fetching image:", error));
-  }, []);
-
-  const handleCommentSubmit = () => {
+  const handleCommentSubmit = async () => {
     if (comment.trim() === "") {
       toast("Comment cannot be empty.", {
         icon: "🚫",
@@ -39,30 +20,80 @@ function App() {
       return;
     }
 
-    if (comment.toLowerCase().includes("flag")) {
-      toast("Comment cannot be posted as it is flagged by our system.", {
-        icon: "🚫",
+    try {
+      toast.promise(
+        getCompletion(comment),
+        {
+          loading: "Posting comment...",
+          // success: "Comment posted! 👏",
+          error: "Failed to post comment.",
+        },
+        {
+          style: {
+            borderRadius: "10px",
+            background: "#333",
+            color: "#fff",
+          },
+        }
+      );
+
+      const res = await getCompletion(comment);
+      const toxicityScores = cleanResponse(res.choices[0].message.content);
+
+      delete toxicityScores.sentence;
+
+      const labels = {
+        toxic: "Toxic",
+        identity_hate: "Identity Hate",
+        insult: "Insult",
+        severely_toxic: "Severely Toxic",
+        threat: "Threatening",
+        obscene: "Obscene",
+      };
+
+      const formattedScores = Object.entries(toxicityScores)
+        .map(
+          ([key, value]) =>
+            `${labels[key] || key}: ${(value * 100).toFixed(1)}%`
+        )
+        .join("\n");
+
+      // console.log(formattedScores);
+
+      // Show toast message with all toxicity scores
+      toast(`Toxicity Analysis:\n${formattedScores}`, {
+        icon: "⚠️",
+        duration: 6000,
         style: {
           borderRadius: "10px",
           background: "#333",
           color: "#fff",
+          whiteSpace: "pre-line",
         },
       });
-    } else {
-      try {
-        getCompletion(comment).then((data) => console.log(data));
-      } catch (error) {}
-      setComments([...comments, comment]);
-      toast("Comment posted!", {
-        icon: "👏",
-        style: {
-          borderRadius: "10px",
-          background: "#333",
-          color: "#fff",
-        },
-      });
+
+      // Check if any score is above 0.7 and prevent posting
+      const isToxic = Object.values(toxicityScores).some(
+        (score) => score > 0.7
+      );
+      if (isToxic) {
+        toast("Comment blocked due to high toxicity levels.", {
+          icon: "🚫",
+          style: {
+            borderRadius: "10px",
+            background: "#333",
+            color: "#fff",
+          },
+        });
+        return;
+      }
+
+      setComments((prev) => [...prev, comment]);
+    } catch (error) {
+      console.error("Error posting comment:", error);
+    } finally {
+      setComment("");
     }
-    setComment("");
   };
 
   const handleKeyDown = (e) => {
@@ -80,15 +111,11 @@ function App() {
       <div className="flex flex-wrap lg:flex-nowrap lg:w-3/4 w-full gap-8 p-4">
         {/* Image Section */}
         <div className="flex-1 bg-gray-700 rounded-md overflow-hidden">
-          {image ? (
-            <img
-              src={image.url}
-              alt="A cute cat"
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <p className="text-gray-400 p-4">Loading image...</p>
-          )}
+          <img
+            src={"../public/post.jpg"}
+            alt="A cute cat"
+            className="w-full h-full object-cover"
+          />
         </div>
 
         {/* Comments Section */}
