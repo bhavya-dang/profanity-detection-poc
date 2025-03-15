@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import toast, { Toaster } from "react-hot-toast";
+import getCompletion from "./utils/deepseek";
 
 function App() {
   const [image, setImage] = useState(null);
@@ -48,6 +49,9 @@ function App() {
         },
       });
     } else {
+      try {
+        getCompletion(comment).then((data) => console.log(data));
+      } catch (error) {}
       setComments([...comments, comment]);
       toast("Comment posted!", {
         icon: "👏",
